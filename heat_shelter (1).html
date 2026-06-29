@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>무더위 대피소 — 가까운 쉼터 안내</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+
+<style>
+  /* ============ THEME TOKENS (모든 색은 불투명 / opacity 1.0) ============ */
+  :root {
+    /* LIGHT NAVY (기본) — 시원한 그라데이션 */
+    --bg-from:   #E6F0FF;
+    --bg-via:    #A9C5F0;
+    --bg-to:     #5E80C2;
+    --ink:       #14233F;
+    --ink-soft:  #445E8C;
+    --surface:   #FFFFFF;
+    --surface-2: #EFF4FF;
+    --surface-3: #DCE7FB;
+    --line:      #C9D8F2;
+    --accent:    #1F62D6;   /* 시원한 강조/CTA/경로보조 */
+    --hot:       #EC5A1E;   /* 더위·폭염·경로(대비용 따뜻한 색) */
+    --cool:      #0FA99B;   /* 시원함/쉼터 */
+    --rain:      #2F6BD8;   /* 비 */
+    --shadow:    #BCD0EE;   /* 불투명 그림자색 */
+    --shadow-2:  #9DB6E0;
+    --chip-ink:  #FFFFFF;
+    --map-tile:  100%;
+    /* 날씨 효과 색 (전부 불투명) */
+    --fx-sun:    #FFCC3D;
+    --fx-cloud:  #FFFFFF;
+    --fx-bolt:   #FFD23D;
+    --fx-snow:   #FFFFFF;
+  }
+  [data-theme="dark"] {
+    /* DARK NAVY 그라데이션 */
+    --bg-from:   #0A1228;
+    --bg-via:    #122046;
+    --bg-to:     #1C2E5A;
+    --ink:       #EAF1FF;
+    --ink-soft:  #9FB2D8;
+    --surface:   #15233F;
+    --surface-2: #1B2C4D;
+    --surface-3: #25395F;
+    --line:      #2E4470;
+    --accent:    #4F8DF5;
+    --hot:       #FF7A45;
+    --cool:      #34D6C6;
+    --rain:      #6FA8FF;
+    --shadow:    #070D1C;
+    --shadow-2:  #050A16;
+    --chip-ink:  #0A1228;
+    --map-tile:  88%;
+    --fx-sun:    #FFB23E;
+    --fx-cloud:  #2A4170;
+    --fx-bolt:   #FFE45A;
+    --fx-snow:   #D9E6FF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+  body {
+    font-family: "Noto Sans KR", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background:
+      linear-gradient(155deg, var(--bg-from) 0%, var(--bg-via) 48%, var(--bg-to) 100%) fixed;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    transition: color .35s ease;
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 18px 16px 48px; position: relative; z-index: 1; }
+
+  /* ============ 전체 배경 날씨 효과 (모두 불투명) ============ */
+  .weather-fx { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+  /* 비 */
+  .fx-rain { position: absolute; top: -8%; width: 2px; border-radius: 2px; background: var(--rain); animation: fxDrop linear infinite; }
+  @keyframes fxDrop { to { transform: translateY(118vh); } }
+  /* 눈 */
+  .fx-snow { position: absolute; top: -6%; border-radius: 50%; background: var(--fx-snow); animation: fxFall linear infinite; }
+  @keyframes fxFall { to { transform: translateY(116vh) translateX(40px); } }
+  /* 구름 */
+  .fx-cloud { position: absolute; animation: fxDrift linear infinite; }
+  .fx-cloud span { position: absolute; background: var(--fx-cloud); border-radius: 50%; box-shadow: 0 0 0 1px var(--fx-cloud); }
+  @keyframes fxDrift { from { transform: translateX(-30vw); } to { transform: translateX(130vw); } }
+  /* 해 + 광선 */
+  .fx-sun { position: absolute; top: 6%; right: 7%; width: 92px; height: 92px; }
+  .fx-sun .core { position: absolute; inset: 22px; border-radius: 50%; background: var(--fx-sun); box-shadow: 0 0 0 6px var(--fx-sun); }
+  .fx-sun .rays { position: absolute; inset: 0; animation: fxSpin 26s linear infinite; }
+  .fx-sun .rays i { position: absolute; left: 50%; top: 50%; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--fx-sun); transform-origin: 2px 46px; }
+  @keyframes fxSpin { to { transform: rotate(360deg); } }
+  /* 번개 */
+  .fx-bolt { position: absolute; top: 8%; width: 44px; height: 90px; display: none; }
+  .fx-bolt.flash { display: block; animation: fxBolt .85s steps(1) infinite; }
+  @keyframes fxBolt { 0%,8%,16%,100% { transform: scale(1); } 4%,12% { transform: scale(1.05); } }
+  .fx-bolt svg { width: 100%; height: 100%; }
+
+  /* ============ TOP BAR ============ */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .dot {
+    width: 38px; height: 38px; border-radius: 12px;
+    display: grid; place-items: center; font-size: 20px;
+    background: linear-gradient(140deg, var(--accent), var(--cool));
+    color: #fff; box-shadow: 0 6px 14px var(--shadow);
+  }
+  .brand h1 { font-size: 18px; font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+  .brand p  { font-size: 11.5px; font-weight: 500; color: var(--ink-soft); margin-top: 1px; }
+
+  .theme-btn {
+    border: 1.5px solid var(--line); background: var(--surface);
+    color: var(--ink); font-family: inherit; font-weight: 700; font-size: 13px;
+    padding: 9px 14px; border-radius: 999px; cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+    box-shadow: 0 4px 10px var(--shadow);
+    transition: transform .15s ease, background .35s ease, border-color .35s ease;
+  }
+  .theme-btn:hover { transform: translateY(-1px); }
+  .theme-btn:focus-visible { outline: 3px solid var(--cool); outline-offset: 2px; }
+
+  /* ============ HERO (현재 날씨) ============ */
+  .hero {
+    position: relative; overflow: hidden;
+    background: var(--surface);
+    border-radius: 22px; padding: 22px;
+    box-shadow: 0 14px 34px var(--shadow), 0 2px 0 var(--surface-3);
+    margin-bottom: 14px;
+  }
+  .hero-grid {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; align-items: stretch;
+  }
+  .now-loc { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 14px; color: var(--ink-soft); }
+  .now-loc .pin { color: var(--accent); }
+  .now-temp { display: flex; align-items: flex-start; gap: 10px; margin-top: 8px; }
+  .now-temp .val { font-size: 72px; font-weight: 900; line-height: .9; letter-spacing: -.04em; }
+  .now-temp .deg { font-size: 28px; font-weight: 700; margin-top: 8px; color: var(--ink-soft); }
+  .now-cond { font-size: 16px; font-weight: 700; margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  .now-feels { font-size: 13.5px; font-weight: 500; color: var(--ink-soft); margin-top: 4px; }
+
+  .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .badge {
+    font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: 999px;
+    color: var(--chip-ink); display: inline-flex; align-items: center; gap: 6px;
+  }
+  .badge.heat { background: var(--hot); color: #fff; }
+  .badge.cool { background: var(--cool); }
+  .badge.rain { background: var(--rain); }
+  .badge.warn { background: #B0091C; color:#fff; }
+
+  /* 우측 미니 통계 */
+  .mini {
+    display: grid; grid-template-rows: repeat(3, 1fr); gap: 10px;
+  }
+  .mini .cell {
+    background: var(--surface-2); border-radius: 14px; padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border: 1px solid var(--line);
+  }
+  .mini .cell .k { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); display:flex; align-items:center; gap:7px; }
+  .mini .cell .v { font-size: 17px; font-weight: 900; letter-spacing: -.02em; }
+
+  /* ============ 시간당 리본 ============ */
+  .section-h { display:flex; align-items:center; justify-content:space-between; margin: 20px 4px 10px; }
+  .section-h h2 { font-size: 15px; font-weight: 900; letter-spacing: -.02em; }
+  .section-h .legend { display:flex; gap:12px; font-size: 11px; font-weight:700; color: var(--ink-soft); }
+  .section-h .legend span { display:flex; align-items:center; gap:5px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display:inline-block; }
+
+  .ribbon {
+    display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 12px;
+    scroll-snap-type: x proximity;
+  }
+  .ribbon::-webkit-scrollbar { height: 8px; }
+  .ribbon::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 8px; }
+  .hour {
+    flex: 0 0 auto; width: 70px; scroll-snap-align: start;
+    background: var(--surface); border-radius: 14px; padding: 12px 8px 10px;
+    text-align: center; border: 1px solid var(--line);
+    box-shadow: 0 6px 14px var(--shadow);
+    position: relative;
+  }
+  .hour.now-h { border-color: var(--hot); }
+  .hour .t { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); }
+  .hour .ic { font-size: 22px; margin: 6px 0 4px; }
+  .hour .deg { font-size: 16px; font-weight: 900; }
+  .hour .bar { height: 6px; border-radius: 6px; margin: 9px 4px 6px; }
+  .hour .pop {
+    font-size: 10.5px; font-weight: 800; color: var(--rain);
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    min-height: 14px;
+  }
+  .hour .pop.dry { color: var(--ink-soft); }
+  .hour .raintag {
+    position: absolute; top: 8px; right: 8px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--rain);
+  }
+
+  /* ============ 지도 + 쉼터 ============ */
+  .map-block {
+    display: grid; grid-template-columns: 1fr 300px; gap: 14px; margin-top: 6px;
+  }
+  #map {
+    height: 420px; border-radius: 20px; border: 1px solid var(--line);
+    box-shadow: 0 14px 34px var(--shadow); background: var(--surface-2);
+  }
+  .leaflet-tile-pane { filter: brightness(var(--map-tile)); }
+
+  .panel {
+    background: var(--surface); border-radius: 20px; padding: 16px;
+    box-shadow: 0 14px 34px var(--shadow); border: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .panel h3 { font-size: 14px; font-weight: 900; display:flex; align-items:center; gap:7px; }
+  .nearest {
+    background: linear-gradient(140deg, var(--cool), var(--accent));
+    color: #fff; border-radius: 16px; padding: 14px;
+  }
+  .nearest .lbl { font-size: 11px; font-weight: 800; letter-spacing:.04em; }
+  .nearest .nm { font-size: 17px; font-weight: 900; margin-top: 3px; line-height:1.2; }
+  .nearest .meta { display:flex; gap:14px; margin-top: 10px; font-size: 12.5px; font-weight: 700; }
+  .nearest .meta b { font-size: 16px; font-weight: 900; display:block; }
+
+  .route-btn {
+    width: 100%; border: none; cursor: pointer; font-family: inherit;
+    background: var(--hot); color: #fff; font-weight: 800; font-size: 13.5px;
+    padding: 12px; border-radius: 12px; display:flex; align-items:center; justify-content:center; gap:7px;
+    transition: transform .15s ease;
+  }
+  .route-btn:hover { transform: translateY(-1px); }
+  .route-btn:focus-visible { outline: 3px solid var(--cool); outline-offset: 2px; }
+
+  .shelter-list { list-style: none; display: flex; flex-direction: column; gap: 7px; max-height: 200px; overflow-y: auto; }
+  .shelter-list li {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 9px 11px; cursor: pointer; transition: border-color .15s ease, transform .12s ease;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .shelter-list li:hover { transform: translateX(2px); border-color: var(--cool); }
+  .shelter-list li .info .n { font-size: 12.5px; font-weight: 700; }
+  .shelter-list li .info .ty { font-size: 10.5px; font-weight: 600; color: var(--ink-soft); margin-top:1px; }
+  .shelter-list li .d { font-size: 12px; font-weight: 900; color: var(--cool); white-space: nowrap; }
+
+  .status {
+    grid-column: 1 / -1; font-size: 12.5px; font-weight: 600; color: var(--ink-soft);
+    text-align: center; padding: 8px;
+  }
+
+  .footnote { font-size: 11px; color: var(--ink-soft); margin-top: 18px; text-align: center; line-height: 1.6; font-weight: 500; }
+
+  /* Leaflet 커스텀 마커 */
+  .pin-me, .pin-shelter {
+    display: grid; place-items: center; font-weight: 900; color: #fff;
+    border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+    box-shadow: 0 4px 8px var(--shadow-2);
+  }
+  .pin-me { width: 30px; height: 30px; background: var(--rain); border: 2px solid #fff; }
+  .pin-shelter { width: 30px; height: 30px; background: var(--cool); border: 2px solid #fff; }
+  .pin-shelter.near { background: var(--hot); width: 36px; height: 36px; }
+  .pin-me span, .pin-shelter span { transform: rotate(45deg); font-size: 14px; }
+  .pulse {
+    position: relative;
+  }
+
+  @media (max-width: 820px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .map-block { grid-template-columns: 1fr; }
+    #map { height: 340px; }
+    .now-temp .val { font-size: 60px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fx-rain, .fx-snow, .fx-cloud, .fx-sun .rays, .fx-bolt { animation: none !important; }
+    .fx-bolt { display: none !important; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body data-theme="">
+<div class="weather-fx" id="weatherFx" aria-hidden="true"></div>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="dot">🌡️</div>
+      <div>
+        <h1>무더위 대피소</h1>
+        <p>시간당 날씨 · 가까운 쉼터 경로 안내</p>
+      </div>
+    </div>
+    <button class="theme-btn" id="themeBtn" aria-label="다크모드 전환">
+      <span id="themeIcon">🌙</span><span id="themeLabel">다크네이비</span>
+    </button>
+  </div>
+
+  <!-- 현재 날씨 -->
+  <section class="hero" aria-label="현재 날씨">
+    <div class="hero-grid">
+      <div>
+        <div class="now-loc"><span class="pin">📍</span><span id="locName">위치 확인 중…</span></div>
+        <div class="now-temp">
+          <span class="val" id="curTemp">--</span><span class="deg">°C</span>
+        </div>
+        <div class="now-cond"><span id="curIcon">⏳</span><span id="curCond">불러오는 중</span></div>
+        <div class="now-feels" id="curFeels">체감온도 측정 중</div>
+        <div class="badge-row" id="badgeRow"></div>
+      </div>
+      <div class="mini">
+        <div class="cell"><span class="k">💧 강수확률(현재)</span><span class="v" id="mPop">--%</span></div>
+        <div class="cell"><span class="k">🔆 오늘 최고</span><span class="v" id="mMax">--°</span></div>
+        <div class="cell"><span class="k">🛟 주변 쉼터</span><span class="v" id="mShelter">-- 곳</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 시간당 리본 -->
+  <div class="section-h">
+    <h2>시간당 예보 (12시간)</h2>
+    <div class="legend">
+      <span><i class="swatch" style="background:#1AA89A"></i>시원</span>
+      <span><i class="swatch" style="background:#F4A03D"></i>더움</span>
+      <span><i class="swatch" style="background:#E8420E"></i>폭염</span>
+      <span><i class="swatch" style="background:#2F6BD8"></i>비</span>
+    </div>
+  </div>
+  <div class="ribbon" id="ribbon" aria-label="시간당 예보"></div>
+
+  <!-- 지도 + 쉼터 -->
+  <div class="section-h"><h2>가까운 무더위 쉼터</h2></div>
+  <div class="map-block">
+    <div id="map"></div>
+    <aside class="panel" aria-label="쉼터 안내">
+      <div class="nearest" id="nearestCard">
+        <div class="lbl">가장 가까운 쉼터</div>
+        <div class="nm" id="nearName">탐색 중…</div>
+        <div class="meta">
+          <div>거리<b id="nearDist">--</b></div>
+          <div>도보<b id="nearWalk">--</b></div>
+        </div>
+      </div>
+      <button class="route-btn" id="locateBtn" style="background:var(--accent)">📍 내 위치로 다시 찾기</button>
+      <button class="route-btn" id="routeBtn">🧭 경로 다시 그리기</button>
+      <h3>📋 주변 쉼터 목록</h3>
+      <ul class="shelter-list" id="shelterList"></ul>
+    </aside>
+    <div class="status" id="status">현재 위치 권한을 허용하면 가장 정확한 안내를 받을 수 있어요.</div>
+  </div>
+
+  <p class="footnote">
+    날씨: Open-Meteo · 지도: OpenStreetMap · 경로: OSRM · 위치: 브라우저 GPS<br />
+    ※ 표시된 쉼터는 데모용 샘플입니다. 실제 운영 시 행정안전부「무더위쉼터 표준데이터」 API로 교체하세요.
+  </p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- 상태 ----------
+  var DEFAULT = { lat: 37.5663, lng: 126.9779, name: "서울특별시 중구" }; // 서울시청
+  var state = { lat: null, lng: null, shelters: [], nearest: null, map: null, layers: {} };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- 테마 ----------
+  $("themeBtn").addEventListener("click", function () {
+    var dark = document.body.getAttribute("data-theme") === "dark";
+    document.body.setAttribute("data-theme", dark ? "" : "dark");
+    $("themeIcon").textContent = dark ? "🌙" : "☀️";
+    $("themeLabel").textContent = dark ? "다크네이비" : "라이트";
+  });
+
+  // ---------- 유틸 ----------
+  function haversine(a, b, c, d) {
+    var R = 6371, dLat = (c - a) * Math.PI / 180, dLng = (d - b) * Math.PI / 180;
+    var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)); // km
+  }
+  function fmtDist(km) { return km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(1) + " km"; }
+  function walkMin(km) { return Math.max(1, Math.round(km / 4.5 * 60)); } // 4.5km/h
+
+  function heatColor(t) {
+    if (t == null) return "#9AA";
+    if (t <= 22) return "#1AA89A";
+    if (t <= 26) return "#5CB85C";
+    if (t <= 29) return "#F4D35E";
+    if (t <= 32) return "#F4A03D";
+    if (t <= 34) return "#F2693C";
+    return "#E8420E";
+  }
+  // Open-Meteo WMO weathercode → {icon, label, rain}
+  function decode(code) {
+    var m = {
+      0: ["☀️", "맑음", false], 1: ["🌤️", "대체로 맑음", false], 2: ["⛅", "구름 조금", false], 3: ["☁️", "흐림", false],
+      45: ["🌫️", "안개", false], 48: ["🌫️", "짙은 안개", false],
+      51: ["🌦️", "약한 이슬비", true], 53: ["🌦️", "이슬비", true], 55: ["🌧️", "강한 이슬비", true],
+      61: ["🌧️", "약한 비", true], 63: ["🌧️", "비", true], 65: ["🌧️", "강한 비", true],
+      66: ["🌧️", "어는 비", true], 67: ["🌧️", "어는 비", true],
+      71: ["🌨️", "약한 눈", true], 73: ["🌨️", "눈", true], 75: ["❄️", "강한 눈", true],
+      80: ["🌦️", "소나기", true], 81: ["🌧️", "소나기", true], 82: ["⛈️", "강한 소나기", true],
+      95: ["⛈️", "뇌우", true], 96: ["⛈️", "우박 뇌우", true], 99: ["⛈️", "강한 뇌우", true]
+    };
+    return m[code] || ["🌡️", "—", false];
+  }
+
+  // ---------- 전체 배경 날씨 효과 ----------
+  var REDUCE = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function classifyWx(code) {
+    if ([0, 1].indexOf(code) >= 0) return "clear";
+    if ([2, 3, 45, 48].indexOf(code) >= 0) return "cloudy";
+    if ([71, 73, 75].indexOf(code) >= 0) return "snow";
+    if ([95, 96, 99].indexOf(code) >= 0) return "storm";
+    return "rain"; // 51~82 등
+  }
+
+  function makeCloud(topPct, scale, dur, delay) {
+    var c = document.createElement("div");
+    c.className = "fx-cloud";
+    c.style.top = topPct + "%";
+    c.style.width = (120 * scale) + "px";
+    c.style.height = (44 * scale) + "px";
+    c.style.animationDuration = dur + "s";
+    c.style.animationDelay = "-" + delay + "s";
+    // 불투명 원 3개로 구름 모양
+    var s1 = document.createElement("span"), s2 = document.createElement("span"), s3 = document.createElement("span");
+    s1.style.cssText = "left:0;bottom:0;width:" + (52 * scale) + "px;height:" + (52 * scale) + "px;";
+    s2.style.cssText = "left:" + (34 * scale) + "px;bottom:" + (10 * scale) + "px;width:" + (64 * scale) + "px;height:" + (64 * scale) + "px;";
+    s3.style.cssText = "left:" + (70 * scale) + "px;bottom:0;width:" + (50 * scale) + "px;height:" + (50 * scale) + "px;";
+    c.appendChild(s1); c.appendChild(s2); c.appendChild(s3);
+    return c;
+  }
+
+  function setWeatherFx(code) {
+    var box = $("weatherFx"); box.innerHTML = "";
+    var kind = classifyWx(code);
+
+    if (kind === "clear") {
+      var sun = document.createElement("div"); sun.className = "fx-sun";
+      var core = document.createElement("div"); core.className = "core";
+      var rays = document.createElement("div"); rays.className = "rays";
+      for (var r = 0; r < 12; r++) { var ry = document.createElement("i"); ry.style.transform = "rotate(" + (r * 30) + "deg)"; rays.appendChild(ry); }
+      if (REDUCE) rays.style.animation = "none";
+      sun.appendChild(rays); sun.appendChild(core); box.appendChild(sun);
+      return;
+    }
+
+    // 구름 (흐림/비/눈/뇌우 공통)
+    var clouds = [[7, 1.1, 70, 0], [16, 0.8, 95, 30], [11, 1.35, 60, 45]];
+    clouds.forEach(function (cf) {
+      var c = makeCloud(cf[0], cf[1], REDUCE ? 0 : cf[2], cf[3]);
+      if (REDUCE) c.style.animation = "none";
+      box.appendChild(c);
+    });
+    if (REDUCE) return; // 정지: 구름만 표시
+
+    if (kind === "rain" || kind === "storm") {
+      for (var i = 0; i < 40; i++) {
+        var d = document.createElement("div"); d.className = "fx-rain";
+        d.style.left = Math.random() * 100 + "%";
+        d.style.height = (14 + Math.random() * 14) + "px";
+        d.style.animationDuration = (0.55 + Math.random() * 0.5) + "s";
+        d.style.animationDelay = "-" + (Math.random() * 1.5) + "s";
+        box.appendChild(d);
+      }
+    }
+    if (kind === "snow") {
+      for (var s = 0; s < 36; s++) {
+        var f = document.createElement("div"); f.className = "fx-snow";
+        var sz = 4 + Math.random() * 5;
+        f.style.left = Math.random() * 100 + "%";
+        f.style.width = sz + "px"; f.style.height = sz + "px";
+        f.style.animationDuration = (4 + Math.random() * 4) + "s";
+        f.style.animationDelay = "-" + (Math.random() * 5) + "s";
+        box.appendChild(f);
+      }
+    }
+    if (kind === "storm") {
+      var bolt = document.createElement("div"); bolt.className = "fx-bolt flash";
+      bolt.style.left = (20 + Math.random() * 50) + "%";
+      bolt.innerHTML = '<svg viewBox="0 0 40 90"><polygon fill="var(--fx-bolt)" points="22,0 4,48 18,48 14,90 38,34 22,34"/></svg>';
+      box.appendChild(bolt);
+    }
+  }
+
+  // ---------- 쉼터 샘플 생성 ----------
+  function makeShelters(lat, lng) {
+    var types = [
+      ["행정복지센터", "🏛️"], ["경로당", "🪑"], ["주민센터", "🏢"],
+      ["시립도서관", "📚"], ["복지관", "🤝"], ["보건소", "🏥"],
+      ["은행 지점", "🏦"], ["노인복지센터", "👵"], ["청소년수련관", "🏫"]
+    ];
+    var names = ["햇살", "푸른", "중앙", "한빛", "새봄", "남산", "은하", "다온", "가람", "솔내"];
+    var out = [];
+    for (var i = 0; i < 8; i++) {
+      var t = types[i % types.length];
+      var ang = Math.random() * Math.PI * 2;
+      var r = 0.003 + Math.random() * 0.012; // 약 0.3~1.6km
+      var sl = lat + Math.cos(ang) * r;
+      var sg = lng + Math.sin(ang) * r / Math.cos(lat * Math.PI / 180);
+      out.push({
+        name: names[i % names.length] + t[0],
+        type: t[0], icon: t[1], lat: sl, lng: sg,
+        dist: haversine(lat, lng, sl, sg)
+      });
+    }
+    out.sort(function (a, b) { return a.dist - b.dist; });
+    return out;
+  }
+
+  // ---------- 날씨 ----------
+  // 주의: precipitation_probability(강수확률)는 hourly 전용. current에 넣으면 HTTP 400.
+  function loadWeather(lat, lng) {
+    var url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lng +
+      "&current=temperature_2m,apparent_temperature,weather_code,precipitation" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code" +
+      "&daily=temperature_2m_max&timezone=auto&forecast_days=2";
+    return fetch(url).then(function (r) {
+      return r.json().then(function (d) {
+        if (!r.ok || d.error) {
+          throw new Error(d.reason || ("HTTP " + r.status));
+        }
+        return d;
+      });
+    }).then(function (d) { renderWeather(d); });
+  }
+
+  function renderWeather(d) {
+    var c = d.current || {};
+    $("curTemp").textContent = c.temperature_2m != null ? Math.round(c.temperature_2m) : "--";
+    var dec = decode(c.weather_code);
+    $("curIcon").textContent = dec[0];
+    $("curCond").textContent = dec[1];
+    $("curFeels").textContent = "체감온도 " + (c.apparent_temperature != null ? Math.round(c.apparent_temperature) + "°C" : "--");
+    if (d.daily && d.daily.temperature_2m_max) $("mMax").textContent = Math.round(d.daily.temperature_2m_max[0]) + "°";
+
+    // 시간당 리본: 현재 시각부터 12시간
+    var H = d.hourly, ribbon = $("ribbon"); ribbon.innerHTML = "";
+    var nowIso = (c.time || "").slice(0, 13);
+    var start = 0;
+    for (var i = 0; i < H.time.length; i++) { if (H.time[i].slice(0, 13) === nowIso) { start = i; break; } }
+    $("mPop").textContent = (H.precipitation_probability[start] != null ? H.precipitation_probability[start] : "--") + "%";
+    var rainSoon = false, feelHot = false;
+    for (var j = start; j < start + 12 && j < H.time.length; j++) {
+      var t = H.temperature_2m[j];
+      var pop = H.precipitation_probability[j];
+      var hd = decode(H.weather_code[j]);
+      var isRain = hd[2] || (pop != null && pop >= 50);
+      if (isRain) rainSoon = true;
+      if (t >= 33) feelHot = true;
+      var hr = parseInt(H.time[j].slice(11, 13), 10);
+      var el = document.createElement("div");
+      el.className = "hour" + (j === start ? " now-h" : "");
+      el.innerHTML =
+        '<div class="t">' + (j === start ? "지금" : hr + "시") + '</div>' +
+        '<div class="ic">' + hd[0] + '</div>' +
+        '<div class="deg">' + Math.round(t) + '°</div>' +
+        '<div class="bar" style="background:' + heatColor(t) + '"></div>' +
+        '<div class="pop ' + (isRain ? "" : "dry") + '">' + (isRain ? "💧" + (pop || 0) + "%" : (pop || 0) + "%") + '</div>' +
+        (isRain ? '<span class="raintag"></span>' : '');
+      ribbon.appendChild(el);
+    }
+
+    // 배지 + 비 효과
+    var br = $("badgeRow"); br.innerHTML = "";
+    var feels = c.apparent_temperature != null ? c.apparent_temperature : c.temperature_2m;
+    if (feels >= 35) br.innerHTML += '<span class="badge warn">🔥 폭염경보 수준</span>';
+    else if (feels >= 33) br.innerHTML += '<span class="badge heat">🥵 폭염주의</span>';
+    else if (feels >= 28) br.innerHTML += '<span class="badge heat">☀️ 무더움</span>';
+    else br.innerHTML += '<span class="badge cool">🙂 견딜 만함</span>';
+    if (rainSoon) br.innerHTML += '<span class="badge rain">🌧️ 곧 비 예보</span>';
+    if (feels >= 31) br.innerHTML += '<span class="badge cool">🛟 쉼터 이용 권장</span>';
+
+    setWeatherFx(c.weather_code);
+  }
+
+  // ---------- 지도 ----------
+  function meIcon() {
+    return L.divIcon({ className: "", html: '<div class="pin-me"><span>나</span></div>', iconSize: [30, 30], iconAnchor: [15, 30] });
+  }
+  function shelterIcon(near) {
+    return L.divIcon({ className: "", html: '<div class="pin-shelter' + (near ? " near" : "") + '"><span>🛟</span></div>', iconSize: [30, 30], iconAnchor: [15, 30] });
+  }
+
+  function initMap(lat, lng) {
+    var map = L.map("map", { zoomControl: true }).setView([lat, lng], 15);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "© OpenStreetMap"
+    }).addTo(map);
+    state.map = map;
+
+    state.layers.me = L.marker([lat, lng], { icon: meIcon() }).addTo(map).bindPopup("<b>현재 위치</b>");
+    state.layers.shelters = L.layerGroup().addTo(map);
+    state.layers.route = L.layerGroup().addTo(map);
+
+    // 지도를 클릭하면 그 지점을 현재 위치로 수동 지정
+    map.on("click", function (e) {
+      relocate(e.latlng.lat, e.latlng.lng, "선택한 위치");
+      $("status").textContent = "지도에서 선택한 위치로 설정했어요.";
+    });
+
+    renderShelterMarkers();
+    drawRoute();
+  }
+
+  // 기존 지도를 재사용해 위치를 갱신 (지도 중복 생성 방지)
+  function relocate(lat, lng, name) {
+    state.lat = lat; state.lng = lng;
+    $("locName").textContent = name;
+    state.shelters = makeShelters(lat, lng);
+    renderPanel();
+    state.layers.me.setLatLng([lat, lng]);
+    state.map.setView([lat, lng], 15);
+    renderShelterMarkers();
+    drawRoute();
+    loadWeather(lat, lng).catch(function (err) {
+      $("status").textContent = "날씨 오류: " + (err && err.message ? err.message : "응답 없음");
+    });
+  }
+
+  function renderShelterMarkers() {
+    state.layers.shelters.clearLayers();
+    state.shelters.forEach(function (s, i) {
+      var mk = L.marker([s.lat, s.lng], { icon: shelterIcon(i === 0) })
+        .bindPopup("<b>" + s.icon + " " + s.name + "</b><br>" + s.type + " · " + fmtDist(s.dist) + " · 도보 " + walkMin(s.dist) + "분");
+      mk.addTo(state.layers.shelters);
+      s._marker = mk;
+    });
+  }
+
+  function drawRoute() {
+    var s = state.shelters[0]; if (!s) return;
+    state.layers.route.clearLayers();
+    var url = "https://router.project-osrm.org/route/v1/foot/" +
+      state.lng + "," + state.lat + ";" + s.lng + "," + s.lat + "?overview=full&geometries=geojson";
+    $("status").textContent = "경로 계산 중…";
+    fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+      var line;
+      if (d.routes && d.routes[0]) {
+        var coords = d.routes[0].geometry.coordinates.map(function (p) { return [p[1], p[0]]; });
+        line = L.polyline(coords, { color: getComputedStyle(document.body).getPropertyValue("--accent").trim(), weight: 6, lineCap: "round" });
+        var dur = Math.round(d.routes[0].duration / 60);
+        var dst = d.routes[0].distance / 1000;
+        $("nearWalk").textContent = dur + "분";
+        $("nearDist").textContent = fmtDist(dst);
+        $("status").textContent = "✅ 가장 가까운 쉼터까지 도보 경로를 표시했어요.";
+      } else { throw new Error("no route"); }
+      line.addTo(state.layers.route);
+      state.map.fitBounds(line.getBounds(), { padding: [50, 50] });
+    }).catch(function () {
+      // OSRM 실패 → 직선 폴백
+      var line = L.polyline([[state.lat, state.lng], [s.lat, s.lng]],
+        { color: getComputedStyle(document.body).getPropertyValue("--accent").trim(), weight: 5, dashArray: "8 8" });
+      line.addTo(state.layers.route);
+      $("nearWalk").textContent = walkMin(s.dist) + "분";
+      $("nearDist").textContent = fmtDist(s.dist);
+      $("status").textContent = "경로 서버 응답이 없어 직선거리로 표시했어요.";
+      state.map.fitBounds(line.getBounds(), { padding: [50, 50] });
+    });
+  }
+
+  // ---------- 쉼터 패널 ----------
+  function renderPanel() {
+    var s = state.shelters;
+    $("mShelter").textContent = s.length + " 곳";
+    $("nearName").textContent = s[0].icon + " " + s[0].name;
+    $("nearDist").textContent = fmtDist(s[0].dist);
+    $("nearWalk").textContent = walkMin(s[0].dist) + "분";
+
+    var ul = $("shelterList"); ul.innerHTML = "";
+    s.forEach(function (x, i) {
+      var li = document.createElement("li");
+      li.innerHTML = '<div class="info"><div class="n">' + x.icon + " " + x.name + '</div><div class="ty">' + x.type + '</div></div><div class="d">' + fmtDist(x.dist) + '</div>';
+      li.addEventListener("click", function () {
+        if (x._marker) { state.map.setView([x.lat, x.lng], 16); x._marker.openPopup(); }
+      });
+      ul.appendChild(li);
+    });
+  }
+
+  // ---------- 부팅 ----------
+  function boot(lat, lng, name) {
+    state.lat = lat; state.lng = lng;
+    $("locName").textContent = name;
+    state.shelters = makeShelters(lat, lng);
+    renderPanel();
+    initMap(lat, lng);
+    loadWeather(lat, lng).catch(function (err) {
+      $("curCond").textContent = "날씨 정보를 불러오지 못했어요";
+      $("curIcon").textContent = "⚠️";
+      $("status").textContent = "날씨 오류: " + (err && err.message ? err.message : "네트워크 차단 또는 API 응답 없음");
+    });
+  }
+
+  function reverseGeocode(lat, lng) {
+    return fetch("https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=" + lat + "&longitude=" + lng + "&localityLanguage=ko")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        return [d.principalSubdivision, d.city || d.locality].filter(Boolean).join(" ") || "현재 위치";
+      }).catch(function () { return "현재 위치"; });
+  }
+
+  $("routeBtn").addEventListener("click", drawRoute);
+
+  function locateMe() {
+    if (!navigator.geolocation) {
+      $("status").textContent = "이 브라우저는 위치 기능을 지원하지 않아요. 지도를 클릭해 위치를 직접 지정할 수 있어요.";
+      return;
+    }
+    $("status").textContent = "현재 위치 확인 중…";
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude, lo = pos.coords.longitude;
+      reverseGeocode(la, lo).then(function (nm) {
+        relocate(la, lo, nm);
+        $("status").textContent = "✅ 현재 위치로 갱신했어요.";
+      });
+    }, function (err) {
+      var msg;
+      if (err.code === 1) msg = "위치 권한이 거부됐어요. 주소창의 위치 아이콘을 '허용'으로 바꾼 뒤 다시 눌러주세요. (이 미리보기 창은 권한이 막혀 있을 수 있어요 — 그땐 지도를 클릭해 직접 지정하세요)";
+      else if (err.code === 2) msg = "위치 신호를 잡지 못했어요. 잠시 후 다시 시도하거나 지도를 클릭해 지정하세요.";
+      else if (err.code === 3) msg = "위치 확인이 지연돼요. '내 위치로 다시 찾기'를 다시 눌러주세요.";
+      else msg = "위치 확인 실패. 지도를 클릭해 직접 지정할 수 있어요.";
+      $("status").textContent = "📍 " + msg;
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
+  $("locateBtn").addEventListener("click", locateMe);
+
+  // 1) 먼저 기본 위치로 즉시 화면을 띄우고  2) 현재 위치를 요청해 갱신
+  boot(DEFAULT.lat, DEFAULT.lng, DEFAULT.name + " (기본)");
+  locateMe();
+})();
+</script>
+</body>
+</html>
